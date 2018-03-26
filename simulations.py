@@ -24,6 +24,17 @@ def Fourier(grid):
     delta = np.fft.rfftn(delta)
     return delta
 
+def Fourier_alt(grid):
+    '''
+    Fourier transform a grid of number of particles
+    grid -- NxNxN grid of number of particles.
+    This does the complex (not real) FFT.
+    '''
+    g_ave = np.mean(grid)
+    delta = (grid - g_ave)/g_ave
+    delta = np.fft.fftn(delta)
+    return delta
+
 def Pk(gridn,gridk,L,kmax,Nk):
     '''
     Compute P(k) from a delta(k) grid.
@@ -44,8 +55,7 @@ def Pk(gridn,gridk,L,kmax,Nk):
     print('Ntot:',Ntot)
     dL = L/gridSize
 
-    # Normalize F[n] to get F[delta]
-    deltak = gridk
+    deltak = np.copy(gridk)
 
     # Wavenumbers
     kx = np.fft.fftfreq(gridSize,dL)
@@ -87,6 +97,56 @@ def Pk(gridn,gridk,L,kmax,Nk):
 
     return [kbin, Pk]
 
+def Pk_alt(gridn,gridk,L,kmax,Nk):
+    '''
+    This is an alternative Pk estimator that relies on bunch of FFTs. I am
+    using it mainly as a prep for the bispectrum estimator.
+    '''
+    # Binning
+    kbinedges = np.linspace(0,kmax,Nk+1)
+    # Centers of k bins
+    kbin = (kbinedges[:-1] + kbinedges[1:])/2
+
+    Ngrid = np.shape(gridn)
+    print('Ngrid:',Ngrid)
+    gridSize = Ngrid[0]
+    Ntot = np.sum(gridn)
+    print('Ntot:',Ntot)
+    dL = L/gridSize
+
+    # Wavenumbers
+    kx = np.fft.fftfreq(gridSize,dL)
+    ky = np.fft.fftfreq(gridSize,dL)
+    kz = np.fft.fftfreq(gridSize,dL)
+    kx, ky, kz = np.meshgrid(kx,ky,kz)
+    kk = np.sqrt(kx**2 + ky**2 + kz**2)*2*np.pi
+    print('Nyquist:',kk.max())
+
+    # Free up some memory
+    kx = []
+    ky = []
+    kz = []
+
+    Pk = np.zeros(Nk)
+
+    # Compute Pk
+    for i in range(Nk):
+        kmin = kbinedges[i]
+        kmax = kbinedges[i+1]
+        k = kbin[i]
+        not_inbin = np.logical_or(kk<kmin,kk>kmax)
+        deltak = np.copy(gridk)
+        deltak[not_inbin] = 0
+        deltak[0,0,0] = 0
+        deltar = np.fft.irfftn(deltak)
+        dk = kbin[1] - kbin[0]
+        Npair = np.fft.irfftn(np.logical_not(not_inbin))
+        Npair = np.sum(Npair**2)*gridSize**3
+        Pk[i] = np.sum(deltar**2)*L**3/gridSize**3/Npair
+
+    return Pk
+    
+
 def Bk(gridn,gridk,L,kmax,Nk):
     '''
     Compute B(k) from a delta(k) grid.
@@ -109,13 +169,10 @@ def Bk(gridn,gridk,L,kmax,Nk):
     print('Ntot:',Ntot)
     dL = L/gridSize
 
-    # Normalize F[n] to get F[delta]
-    deltak = gridk
-
     # Wavenumbers
     kx = np.fft.fftfreq(gridSize,dL)
     ky = np.fft.fftfreq(gridSize,dL)
-    kz = np.fft.rfftfreq(gridSize,dL)
+    kz = np.fft.fftfreq(gridSize,dL)
     kx, ky, kz = np.meshgrid(kx,ky,kz)
     kk = np.sqrt(kx**2 + ky**2 + kz**2)*2*np.pi
     print('Nyquist:',kk.max())
@@ -125,7 +182,20 @@ def Bk(gridn,gridk,L,kmax,Nk):
     ky = []
     kz = []
 
-    # Precompute the length of Bk data vector
+    # Precompute all Fourier transforms
+    print('Computing Fourier transforms of spherical shells')
+    deltas = np.zeros((Nk,gridSize,gridSize,gridSize))
+    Ntri = np.zeros((Nk,gridSize,gridSize,gridSize))
+    for i in range(Nk):
+        kmin = kbinedges[i]
+        kmax = kbinedges[i+1]
+        not_inbin = np.logical_or(kk<kmin,kk>kmax)
+        Ntri[i,:,:,:] = np.real(np.fft.ifftn(np.logical_not(not_inbin)))
+        deltak = np.copy(gridk)
+        deltak[not_inbin] = 0
+        deltas[i,:,:,:] = np.real(np.fft.ifftn(deltak))
+
+    # Precompute number of Bk bins
     Bksize = 0
     for i1 in range(Nk):
         for i2 in range(i1,Nk):
@@ -137,38 +207,18 @@ def Bk(gridn,gridk,L,kmax,Nk):
 
     # Compute average Bk in bins of k1, k2, k3
     counter = 0
+    print('Computing Bispectrum in bins')
     for i1 in range(Nk):
-        kmin = kbinedges[i1]
-        kmax = kbinedges[i1+1]
-        not_inbin = np.logical_and(kk<kmin,kk>kmax)
-        deltak = np.copy(gridk)
-        deltak[not_inbin] = 0
-        deltar1 = np.fft.irfftn(deltak)
-        k1 = kbin[i1]
         for i2 in range(i1,Nk):
-            kmin = kbinedges[i2]
-            kmax = kbinedges[i2+1]
-            not_inbin = np.logical_and(kk<kmin,kk>kmax)
-            deltak = np.copy(gridk)
-            deltak[not_inbin] = 0
-            deltar2 = np.fft.irfftn(deltak)
-            k2 = kbin[i2]
             # To make sure the triangular condition is satisfied
             for i3 in range(i2,min(i1+i2+1,Nk)):
-                k3 = kbin[i3]
-                kmin = kbinedges[i3]
-                kmax = kbinedges[i3+1]
-                not_inbin = np.logical_and(kk<kmin,kk>kmax)
-                deltak = np.copy(gridk)
-                deltak[not_inbin] = 0
-                deltar3 = np.fft.irfftn(deltak)
-
-                Bisp = np.sum(deltar1*deltar2*deltar3)
-                dk = kbinedges[1] - kbinedges[0]
-                Bisp *= L**6/gridSize**12/(8*np.pi**2*k1*k2*k3*dk**3)
-
+                deltaall = deltas[i1,:,:,:]*deltas[i2,:,:,:]*deltas[i3,:,:,:]
+                Bisp = np.sum(deltaall)
+                Ntriall = np.sum(Ntri[i1,:,:,:]*Ntri[i2,:,:,:]*Ntri[i3,:,:,:])
+                Ntriall *= gridSize**6
+                Bisp *= L**6/gridSize**3/Ntriall
                 Bk[counter] = Bisp
-                ktriplet[:,counter] = [k1,k2,k3]
+                ktriplet[:,counter] = [kbin[i1],kbin[i2],kbin[i3]]
                 counter += 1
 
     return ktriplet, Bk
