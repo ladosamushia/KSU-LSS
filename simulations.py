@@ -129,8 +129,9 @@ def Bk(gridn,gridk,L,kmax,Nk):
     Bksize = 0
     for i1 in range(Nk):
         for i2 in range(i1,Nk):
-            for i3 in range(min(i1+i2+1,Nk)):
+            for i3 in range(i2,min(i1+i2+1,Nk)):
                 Bksize += 1
+    print('Number of bispectrum bins:',Bksize)
     Bk = np.zeros(Bksize)
     ktriplet = np.zeros((3,Bksize))
 
@@ -154,7 +155,6 @@ def Bk(gridn,gridk,L,kmax,Nk):
             k2 = kbin[i2]
             # To make sure the triangular condition is satisfied
             for i3 in range(i2,min(i1+i2+1,Nk)):
-                print(i1,i2,i3)
                 k3 = kbin[i3]
                 kmin = kbinedges[i3]
                 kmax = kbinedges[i3+1]
