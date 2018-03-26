@@ -48,9 +48,9 @@ def Pk(gridn,gridk,L,kmax,Nk):
     deltak = gridk
 
     # Wavenumbers
-    kx = np.fft.fftfreq(Ngrid[0],dL)
-    ky = np.fft.fftfreq(Ngrid[0],dL)
-    kz = np.fft.rfftfreq(Ngrid[0],dL)
+    kx = np.fft.fftfreq(gridSize,dL)
+    ky = np.fft.fftfreq(gridSize,dL)
+    kz = np.fft.rfftfreq(gridSize,dL)
     kx, ky, kz = np.meshgrid(kx,ky,kz)
     kk = np.sqrt(kx**2 + ky**2 + kz**2)*2*np.pi
     print('Nyquist:',kk.max())
@@ -76,7 +76,6 @@ def Pk(gridn,gridk,L,kmax,Nk):
     for i in range(Nk):
         inbin = np.logical_and(kk > kbinedges[i], kk < kbinedges[i+1])
         Pk[i] = np.sum(deltak[inbin])/np.sum(inbin)
-        print(i,np.sum(inbin),Pk[i])
 
     # Subtract shot noise
     SN = L**3/Ntot
@@ -87,3 +86,89 @@ def Pk(gridn,gridk,L,kmax,Nk):
     kbin = (kbinedges[:-1] + kbinedges[1:])/2
 
     return [kbin, Pk]
+
+def Bk(gridn,gridk,L,kmax,Nk):
+    '''
+    Compute B(k) from a delta(k) grid.
+    This does not subtract shot-noise or correct for sampling effect.
+    gridn -- delta(r) grid
+    gridk -- delta(k) grid
+    L -- size of the cube
+    kmax -- maximum wavenumber we want to go to
+    Nk -- number of bins from 0 to kmax
+    '''
+    # Binning
+    kbinedges = np.linspace(0,kmax,Nk+1)
+    # Centers of k bins
+    kbin = (kbinedges[:-1] + kbinedges[1:])/2
+
+    Ngrid = np.shape(gridn)
+    print('Ngrid:',Ngrid)
+    gridSize = Ngrid[0]
+    Ntot = np.sum(gridn)
+    print('Ntot:',Ntot)
+    dL = L/gridSize
+
+    # Normalize F[n] to get F[delta]
+    deltak = gridk
+
+    # Wavenumbers
+    kx = np.fft.fftfreq(gridSize,dL)
+    ky = np.fft.fftfreq(gridSize,dL)
+    kz = np.fft.rfftfreq(gridSize,dL)
+    kx, ky, kz = np.meshgrid(kx,ky,kz)
+    kk = np.sqrt(kx**2 + ky**2 + kz**2)*2*np.pi
+    print('Nyquist:',kk.max())
+
+    # Free up some memory
+    kx = []
+    ky = []
+    kz = []
+
+    # Precompute the length of Bk data vector
+    Bksize = 0
+    for i1 in range(Nk):
+        for i2 in range(i1,Nk):
+            for i3 in range(min(i1+i2+1,Nk)):
+                Bksize += 1
+    Bk = np.zeros(Bksize)
+    ktriplet = np.zeros((3,Bksize))
+
+    # Compute average Bk in bins of k1, k2, k3
+    counter = 0
+    for i1 in range(Nk):
+        kmin = kbinedges[i1]
+        kmax = kbinedges[i1+1]
+        not_inbin = np.logical_and(kk<kmin,kk>kmax)
+        deltak = np.copy(gridk)
+        deltak[not_inbin] = 0
+        deltar1 = np.fft.irfftn(deltak)
+        k1 = kbin[i1]
+        for i2 in range(i1,Nk):
+            kmin = kbinedges[i2]
+            kmax = kbinedges[i2+1]
+            not_inbin = np.logical_and(kk<kmin,kk>kmax)
+            deltak = np.copy(gridk)
+            deltak[not_inbin] = 0
+            deltar2 = np.fft.irfftn(deltak)
+            k2 = kbin[i2]
+            # To make sure the triangular condition is satisfied
+            for i3 in range(i2,min(i1+i2+1,Nk)):
+                print(i1,i2,i3)
+                k3 = kbin[i3]
+                kmin = kbinedges[i3]
+                kmax = kbinedges[i3+1]
+                not_inbin = np.logical_and(kk<kmin,kk>kmax)
+                deltak = np.copy(gridk)
+                deltak[not_inbin] = 0
+                deltar3 = np.fft.irfftn(deltak)
+
+                Bisp = np.sum(deltar1*deltar2*deltar3)
+                dk = kbinedges[1] - kbinedges[0]
+                Bisp *= L**6/gridSize**12/(8*np.pi**2*k1*k2*k3*dk**3)
+
+                Bk[counter] = Bisp
+                ktriplet[:,counter] = [k1,k2,k3]
+                counter += 1
+
+    return ktriplet, Bk
