@@ -134,7 +134,7 @@ def Pk_alt(gridn,gridk,L,kmax,Nk):
         kmin = kbinedges[i]
         kmax = kbinedges[i+1]
         k = kbin[i]
-        not_inbin = np.logical_or(kk<kmin,kk>kmax)
+        not_inbin = np.logical_or(kk<kmin,kk>=kmax)
         deltak = np.copy(gridk)
         deltak[not_inbin] = 0
         deltak[0,0,0] = 0
@@ -189,7 +189,7 @@ def Bk(gridn,gridk,L,kmax,Nk):
     for i in range(Nk):
         kmin = kbinedges[i]
         kmax = kbinedges[i+1]
-        not_inbin = np.logical_or(kk<kmin,kk>kmax)
+        not_inbin = np.logical_or(kk<kmin,kk>=kmax)
         Ntri[i,:,:,:] = np.real(np.fft.ifftn(np.logical_not(not_inbin)))
         deltak = np.copy(gridk)
         deltak[not_inbin] = 0
