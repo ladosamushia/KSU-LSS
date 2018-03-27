@@ -1,4 +1,5 @@
 '''
+lado.samushia.office@gmail.com
 functions for processing simulations.
 '''
 
