@@ -1,6 +1,8 @@
 '''
+
 lado.samushia.office@gmail.com
-functions for processing simulations.
+
+Functions for processing simulations.
 '''
 
 from sys import argv
