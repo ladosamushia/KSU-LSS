@@ -17,6 +17,14 @@ def grid_data(xyz,Nbins):
     grid, _ = np.histogramdd(xyz,bins=Nbins)
     return grid
 
+def grid_weighted(xyz,weight,Nbins):
+    '''
+    Make a density grid NbinsxNbinsxNbins out of xyz coordinates.
+    xyz -- 3xN array of x, y, z coordinates.
+    '''
+    grid, _ = np.histogramdd(xyz,bins=Nbins,weights=weight)
+    return grid
+
 def Fourier(grid):
     '''
     Fourier transform a grid of number of particles
