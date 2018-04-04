@@ -103,6 +103,7 @@ def Pk(gridn,gridk,L,kmax,Nk):
     #SN = L**3/Ntot
     #print('Shot noise:',SN)
     #Pk -= SN
+    print('I am not subtracting shot noise')
 
     # Centers of k bins
     kbin = (kbinedges[:-1] + kbinedges[1:])/2
