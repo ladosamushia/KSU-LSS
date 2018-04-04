@@ -49,6 +49,7 @@ def Fourier_alt(grid):
 def Pk(gridn,gridk,L,kmax,Nk):
     '''
     Compute P(k) from a delta(k) grid.
+    Do not subtract shot noise.
     gridn -- delta(r) grid
     gridk -- delta(k) grid
     L -- size of the cube
@@ -99,9 +100,9 @@ def Pk(gridn,gridk,L,kmax,Nk):
         Pk[i] = np.sum(deltak[inbin])/np.sum(inbin)
 
     # Subtract shot noise
-    SN = L**3/Ntot
-    print('Shot noise:',SN)
-    Pk -= SN
+    #SN = L**3/Ntot
+    #print('Shot noise:',SN)
+    #Pk -= SN
 
     # Centers of k bins
     kbin = (kbinedges[:-1] + kbinedges[1:])/2
