@@ -46,7 +46,7 @@ def Fourier_alt(grid):
     delta = np.fft.fftn(delta)
     return delta
 
-def Pk(gridn,gridk,L,kmax,Nk):
+def Pk(gridn,gridk,L,kmax,Nk,SN=True):
     '''
     Compute P(k) from a delta(k) grid.
     Do not subtract shot noise.
@@ -100,10 +100,12 @@ def Pk(gridn,gridk,L,kmax,Nk):
         Pk[i] = np.sum(deltak[inbin])/np.sum(inbin)
 
     # Subtract shot noise
-    #SN = L**3/Ntot
-    #print('Shot noise:',SN)
-    #Pk -= SN
-    print('I am not subtracting shot noise')
+    if SN == True:
+        shotnoise = L**3/Ntot
+        print('Shot noise:',shotnoise)
+        Pk -= shotnoise
+    else:
+        print('I am not subtracting shot noise')
 
     # Centers of k bins
     kbin = (kbinedges[:-1] + kbinedges[1:])/2
