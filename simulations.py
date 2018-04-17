@@ -25,6 +25,23 @@ def grid_weighted(xyz,weight,Nbins):
     grid, _ = np.histogramdd(xyz,bins=Nbins,weights=weight)
     return grid
 
+def grid_PCS(xyz,Nbins,weight=np.array([])):
+    '''
+    Piecewise cubic spline grid with optional weights.
+    '''
+    grid = np.zeros((Nbins,Nbins,Nbins))
+    L = xyz.max() - xyz.min()
+    print('cube size = ', L)
+    index = ((xyz - xyz.min())/L*Nbins).astype(int)
+    index[index==Nbins] = Nbins - 1
+    if len(weight) == 0:
+        for i, j, k in index:
+            grid[i,j,k] += 1
+    else:
+        for ind, (i, j, k) in enumerate(index):
+            print(ind, i, j, k)
+            grid[i,j,k] += weight[ind]
+
 def Fourier(grid):
     '''
     Fourier transform a grid of number of particles
@@ -237,3 +254,11 @@ def Bk(gridn,gridk,L,kmax,Nk):
                 counter += 1
 
     return ktriplet, Bk
+'''
+if __name__ == '__main__':
+    xyz = np.ones((5,3))
+    xyz[1,1] = 5
+    weight = np.ones((5,1))*0.5
+    print(weight)
+    grid_PCS(xyz,10,weight=weight)
+'''
