@@ -7,6 +7,7 @@ Functions for processing simulations.
 
 from sys import argv
 import numpy as np
+import scipy.special as spc
 import pickle
 
 def grid_data(xyz,Nbins):
@@ -56,6 +57,7 @@ def Pk(gridn,gridk,L,kmax,Nk,SN=True):
     kmax -- maximum wavenumber we want to go to
     Nk -- number of bins from 0 to kmax
     '''
+    print(SN)
     # Power spectrum binning
     kbinedges = np.linspace(0,kmax,Nk+1)
     Pk = np.zeros(Nk)
@@ -161,6 +163,57 @@ def Pk_alt(gridn,gridk,L,kmax,Nk):
 
     return Pk
     
+def grid_ellm(gridk,L,kmax,Nk,ellm):
+    '''
+    Compute spherical harmonics of a cubic grid.
+    ellm - a list of (ell, m) pairs.
+    '''
+    # Binning
+    kbinedges = np.linspace(0,kmax,Nk+1)
+
+    Ngrid = np.shape(gridk)
+    print('Ngrid:',Ngrid)
+    gridSize = Ngrid[0]
+    dL = L/gridSize
+
+    # Wavenumbers
+    kx = np.fft.fftfreq(gridSize,dL)
+    ky = np.fft.fftfreq(gridSize,dL)
+    kz = np.fft.rfftfreq(gridSize,dL)
+    kx, ky, kz = np.meshgrid(kx,ky,kz)
+    kk = np.sqrt(kx**2 + ky**2 + kz**2)*2*np.pi
+    # Artificially set k0 to non-zero to avoid dividing by zero issues
+    kk[0,0,0] = 0.0000001
+    phi = np.arccos(kz/kk)
+    theta = np.arctan2(ky,kx)
+    print(phi)
+    print(theta)
+    print('Nyquist:',kk.max())
+
+    # Free up some memory
+    kx = []
+    ky = []
+    kz = []
+
+    # How many multipoles need to be computed
+    Nmultipoles = len(ellm)
+    # One extra column for kbin values
+    gridlm = np.zeros((Nmultipoles+1,Nk))
+
+    # Compute average grid multipole
+    for i in range(Nmultipoles):
+        ell, m = ellm[i]
+        print('ell, m = ', ell, ' ', m)
+        spherical_harmonics = spc.sph_harm(m, ell, theta, phi)
+        for j in range(Nk):
+            print(j)
+            inbin = np.logical_and(kk > kbinedges[j], kk < kbinedges[j+1])
+            gridlm[i+1,j] = np.sum(gridk[inbin]*spherical_harmonics[inbin])/np.sum(inbin)
+
+    # Centers of k bins
+    gridlm[0,:] = (kbinedges[:-1] + kbinedges[1:])/2
+    print(gridlm)
+    return gridlm
 
 def Bk(gridn,gridk,L,kmax,Nk):
     '''
@@ -237,3 +290,8 @@ def Bk(gridn,gridk,L,kmax,Nk):
                 counter += 1
 
     return ktriplet, Bk
+
+# Remove this later !!
+if __name__ == '__main__':
+    gridk = np.load('ds14_a.deltak.000.npy')
+    grid_ellm(gridk, 2000, 0.2, 20, [(0,0)])
