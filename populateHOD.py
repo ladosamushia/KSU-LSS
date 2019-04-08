@@ -106,7 +106,7 @@ def populate_hod(halos, hod_par):
     """
     Mhalos = halos[:, 0]
     Ncen, Nsat = populate(Mhalos, hod_par)
-    xcen, ycen, zcen = np.transpose(halos[Ncen, 2:])
+    xcen, ycen, zcen = np.transpose(halos[Ncen, -3:])
     xsat, ysat, zsat = place_satellites(halos, Nsat)
     xyzall = np.hstack(([xcen, ycen, zcen], [xsat, ysat, zsat]))
     return xyzall
