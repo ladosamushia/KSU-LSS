@@ -40,14 +40,15 @@ def populate(halo_mass, hod_par):
 
 def place_satellites(halos, n_sat):
     """
-    halos - halo mass, virial radius, x, y, z
+    halos - halo mass, virial radius, scale radius, x, y, z
     Nsat - Number of satellites I need to place
     Both of the above are arrays.
 
     returns x, y, z coordinates of satellite galaxies assuming NFW profile.
     """
     # Rs is in the second column and it is in kpc so convert to Mpc
-    M, Rs, xh, yh, zh = halos.T
+    M, Rv, Rs, xh, yh, zh = halos.T
+    Rv /= 1000.0
     Rs /= 1000.0
     # Total number of satellites
     tot_sat = int(np.sum(n_sat))
@@ -64,8 +65,15 @@ def place_satellites(halos, n_sat):
     y /= norm
     z /= norm
     distance = np.zeros(tot_sat)
+    # I need to generate distribuiton of distances according to NFW profile
+    # I will generate uniform numbers - eta - and then transform to - r - in
+    # such a way that r follows NFW.
+    # I don't want r to be larger than virial radius which implies that eta can
+    # not be larger than a certain number.
+    # I will figure out what that number should be here.
+    eta_max = np.log(1 + Rv) + 1.0/(1 + Rv) - 1
     # Concentration parameter is usually not much larger than 10
-    eta = np.random.uniform(0, 2, tot_sat)
+    eta = np.random.uniform(0, eta_max)
     for i in range(tot_sat):
         def func(r):
             np.log(1 + r) + 1.0/(1 + r) - 1 - eta[i]
