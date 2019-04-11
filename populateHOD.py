@@ -2,6 +2,10 @@
 Populate a halo catalogue with galaxies using HOD parameters.
 
 For now I will only use the simple 5 parameter HOD.
+
+Want to have two options. In-phase for when I want changes in cosmology to be
+coherently reflected and Out-of-phase for when I want random phases.
+This is all related to the Abacus idea.
 """
 
 import scipy.special
@@ -11,60 +15,83 @@ import numpy as np
 
 
 def populate(halo_mass, hod_par):
-
     """
-    halo_mass is a numpy array with halo masses.
-    hod_par is a list of HOD parameters in the following order:
+    :param halo_mass: Numpy array of halo masses
+    :param hod_par: 5 HOD parameters in the following order -
     (log10(Mcut), log10(M1), sigma, kappa, alpha)
-
-    Returns two arrays one for centrals one for satellites.
-    The centrals array has 1 (there is a central) or 0 (no central).
-    The satellites array has the number of satellites.
+    :return: Ncen - Array that gives mean number of central galaxies in halos; Nsat - array that gives mean number of
+    satellite galaxies in halos.
     """
 
     Mcut, M1, sigma, kappa, alpha = hod_par
     # Central galaxies
-    NcenProb: float = 0.5*scipy.special.erfc((Mcut - np.log10(halo_mass)) / np.sqrt(2) / sigma)
-    Ncen = np.random.poisson(NcenProb)
-    # Can only have one central galaxy. Turn Ncen > 1 to 1
-    Ncen[np.where(Ncen > 0)] = 1
+    n_cen_prob = 0.5*scipy.special.erfc((Mcut - np.log10(halo_mass)) / np.sqrt(2) / sigma)
+    n_cen_prob[np.where(n_cen_prob > 1)] = 1
 
     # Satellite galaxies
-    NsatProb = NcenProb * ((halo_mass - kappa * 10 ** Mcut) / 10 ** M1) ** alpha
+    NsatProb = n_cen_prob * ((halo_mass - kappa * 10 ** Mcut) / 10 ** M1) ** alpha
     NsatProb[np.where(np.isnan(NsatProb))] = 0
-    NsatProb[np.where(NsatProb < 1)] = 0
-    Nsat = np.random.poisson(NsatProb)
 
-    return Ncen, Nsat
+    return n_cen_prob, NsatProb
 
 
-def place_satellites(halos, n_sat):
+def place_centrals(halos, n_cen_prob, seed='None'):
     """
-    halos - halo mass, virial radius, scale radius, x, y, z
-    Nsat - Number of satellites I need to place
-    Both of the above are arrays.
-
-    returns x, y, z coordinates of satellite galaxies assuming NFW profile.
+    :param halos: array with 6 columns - halo mass, concentration radius, virial radius, x, y, z
+    :param n_cen_prob: array of probabilities for ahalo to host a central galaxy
+    :param seed: random seed to make sure I can rerun with the same phase. This is optional if equal to
+    'None' a random seed is used.
+    :return: Array of x, y, z of central galaxies
     """
-    # Rs is in the second column and it is in kpc so convert to Mpc
+
+    if seed != 'None':
+        np.random.seed(seed)
+
+    Ncen = np.random.poisson(n_cen_prob)
+    # Can only have one central galaxy. Turn Ncen > 1 to 1
+    Ncen[np.where(Ncen > 1)] = 1
+    
+    return np.transpose(halos[Ncen, -3:])
+
+
+def place_satellites(halos, n_sat_prob, seed='None'):
+    """
+    :param halos: array with 6 columns - halo mass, concentration radius, virial radius, x, y, z
+    :param n_sat_prob: array of average number of satellites per halo
+    :param seed: random seed to make sure I can rerun with the same phase. This is optional if equal to
+    'None' a random seed will be used.
+    :return: x, y, z of satellite galaxies
+    """
+
+    if seed != 'None':
+        np.random.seed(seed)
+
+    # This is actual number of satellites not mean.
+    n_sat = np.random.poisson(n_sat_prob)
+    tot_n_sat = np.sum(n_sat)
+    x_sat, y_sat, z_sat = np.zeros(3, tot_n_sat)
+
+    # Rs is in the second column and it is in kpc so convert to Mpc. Same for Rv.
     M, Rv, Rs, xh, yh, zh = halos.T
     Rv /= 1000.0
     Rs /= 1000.0
-    # Total number of satellites
-    tot_sat = int(np.sum(n_sat))
     # Total number of halos
     nhalo = np.size(Rs)
 
+    # Coordinates of possible satellites with respect to the center.
+    # I will create twice the number of average satellites just in case.
+    # I need to do this to ensure in phase change in cosmology.
+    num_sat = int(n_sat_prob)*2
     # Random direction
-    x = np.random.randn(tot_sat)
-    y = np.random.randn(tot_sat)
-    z = np.random.randn(tot_sat)
+    dx_sat = np.random.randn(num_sat)
+    dy_sat = np.random.randn(num_sat)
+    dz_sat = np.random.randn(num_sat)
     # Make it unit length
-    norm = np.sqrt(x**2 + y**2 + z**2)
-    x /= norm
-    y /= norm
-    z /= norm
-    distance = np.zeros(tot_sat)
+    norm = np.sqrt(dx_sat**2 + dy_sat**2 + dz_sat**2)
+    dx_sat /= norm
+    dy_sat /= norm
+    dz_sat /= norm
+    distance = np.zeros(num_sat)
     # I need to generate distribuiton of distances according to NFW profile
     # I will generate uniform numbers - eta - and then transform to - r - in
     # such a way that r follows NFW.
@@ -74,41 +101,43 @@ def place_satellites(halos, n_sat):
     eta_max = np.log(1 + Rv) + 1.0/(1 + Rv) - 1
     # Concentration parameter is usually not much larger than 10
     eta = np.random.uniform(0, eta_max)
-    for i in range(tot_sat):
+    for i in range(num_sat):
         def func(r):
             np.log(1 + r) + 1.0/(1 + r) - 1 - eta[i]
 
         rstar = scipy.optimize.fsolve(func, np.ndarray([1]))
         distance[i] = Rs[i]*rstar
-    dx = np.transpose(x*distance)
-    dy = np.transpose(y*distance)
-    dz = np.transpose(z*distance)
-    # Now pull all x, y, z of satellites
-    xsat, ysat, zsat = np.zeros((3, tot_sat))
+    dx_sat = np.transpose(dx_sat*distance)
+    dy_sat = np.transpose(dy_sat*distance)
+    dz_sat = np.transpose(dz_sat*distance)
+    # I need to be careful with this loop to ensure matched phase
     counter = 0
     for i in range(nhalo):
-        for j in range(n_sat[i]):
-            xsat[counter] = xh[i] + dx[counter]
-            ysat[counter] = yh[i] + dy[counter]
-            zsat[counter] = zh[i] + dz[counter]
+        # This is not entirely correct. If I get more than twice the number of satellites than the mean I
+        # will just ignore them. This has a very low likelihood of happening however so I do not think it
+        # will affect the results much.
+        for j in range(np.max(n_sat[i], int(2*n_sat_prob[i]))):
+            x_sat[counter] = xh[i] + dx_sat[counter]
+            y_sat[counter] = yh[i] + dy_sat[counter]
+            z_sat[counter] = zh[i] + dz_sat[counter]
             counter += 1
+        # Make sure we move to the next satellite. This is necessary to maintain matched phase.
+        counter += 2*n_sat_prob[i] - n_sat[i]
 
-    return xsat, ysat, zsat 
+    return x_sat, y_sat, z_sat
 
 
-def populate_hod(halos, hod_par):
+def populate_hod(halos, hod_par, seed):
     """
-    Take halos and populate them with galaxies according to hod_par
-    parameters.
-    halo array must be a numpy array with 5 columns:
-    halomass (Mpc/h), Rs (kpc/h), x, y, z (all Mpc/h comoving)
-    returns x, y, z of galaxies.
+    :param halos: array of halo properties - six columns - mass, concentration radius, virial radius, x, y, z,
+    :param hod_par: HOD parameters in the order - (log10(Mcut), log10(M1), sigma, kappa, alpha)
+    :param seed: random seed in case I want matched phases. If equal to 'None' random seed is used.
+    :return: x, y, z of both centrals and satellites.
     """
-    Mhalos = halos[:, 0]
-    Ncen, Nsat = populate(Mhalos, hod_par)
-    # Only retain halos that have centrals
-    xcen, ycen, zcen = np.transpose(halos[Ncen != 0, -3:])
-    xsat, ysat, zsat = place_satellites(halos, Nsat)
+    mass_halos = halos[:, 0]
+    n_cen_prob, n_sat_prob = populate(mass_halos, hod_par)
+    xcen, ycen, zcen = place_centrals(halos, n_cen_prob, seed)
+    xsat, ysat, zsat = place_satellites(halos, n_sat_prob, seed)
     xyzall = np.hstack(([xcen, ycen, zcen], [xsat, ysat, zsat]))
     return xyzall
 
@@ -121,6 +150,7 @@ if __name__ == '__main__':
     print(halos)
     HODpar = (13.08, 14.06, 0.98, 1.13, 0.9)
     xyzall = populate_hod(halos, HODpar)
+    # xyzall = populate_hod(halos, HODpar, 400)
     print(xyzall)
     print(time.time() - start_time)
 """
