@@ -96,11 +96,9 @@ def place_satellites(halos, n_sat_prob, satellites):
     tot_n_sat = np.sum(n_sat)
     # I will hold satellite x, y, z in here
     xyz_sat = np.zeros((3, tot_n_sat))
-
     # Rs is in the second column and it is in kpc so convert to Mpc. Same for Rv.
+    # Carefull here, these are not copies. chancing Rv will change halos.
     M, Rv, Rs, xh, yh, zh = halos.T
-    Rv *= 1000.0
-    Rs *= 1000.0
     # Total number of halos
     nhalo = np.size(Rs)
 
@@ -112,7 +110,7 @@ def place_satellites(halos, n_sat_prob, satellites):
     for i in range(nhalo):
         if need_more[i] > 0:
             for j in range(need_more[i]):
-                xyz = satellite_xyz(Rv[i], Rs[i])
+                xyz = satellite_xyz(Rv[i]/1000, Rs[i]/1000)
                 xyz += [xh[i], yh[i], zh[i]]
                 if sat_num[i] == 0:
                     satellites[i] = [xyz]
@@ -145,14 +143,10 @@ def populate_hod(halos, hod_par, satellites):
 
 """
 if __name__ == '__main__':
-    start_time = time.time()
     halos = np.load('/Users/Lado/Downloads/halos_small.npy')
-    print(time.time() - start_time)
     HODpar = (13.08, 14.06, 0.98, 1.13, 0.9)
     Ncen, Nsat = populate(halos[:, 0], HODpar)
     xc, yc, zc = place_centrals(halos, Ncen)
     satellites = [[] for i in range(np.size(Ncen))]
     xyzall = populate_hod(halos, HODpar, satellites)
-    print(xyzall)
-    print(np.shape(xyzall))
 """
