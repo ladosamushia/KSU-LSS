@@ -35,17 +35,12 @@ def populate(halo_mass, hod_par):
     return n_cen_prob, NsatProb
 
 
-def place_centrals(halos, n_cen_prob, seed='None'):
+def place_centrals(halos, n_cen_prob):
     """
     :param halos: array with 6 columns - halo mass, concentration radius, virial radius, x, y, z
     :param n_cen_prob: array of probabilities for ahalo to host a central galaxy
-    :param seed: random seed to make sure I can rerun with the same phase. This is optional if equal to
-    'None' a random seed is used.
     :return: Array of x, y, z of central galaxies
     """
-
-    if seed != 'None':
-        np.random.seed(seed)
 
     Ncen = np.random.poisson(n_cen_prob)
     # Can only have one central galaxy. Turn Ncen > 1 to 1
@@ -54,22 +49,54 @@ def place_centrals(halos, n_cen_prob, seed='None'):
     return np.transpose(halos[Ncen, -3:])
 
 
-def place_satellites(halos, n_sat_prob, seed='None'):
+def nfw_cdf(r, eta):
+    """
+    :r: distance from the center of the halo
+    :eta: probability
+    :return: value of r for which probability is equal to eta (for NFW profile)
+
+    This function computes a CDF of NFW radial profile of halos and returns the value of radisu for which the CDF is
+    equal to a certain value.
+    """
+    return np.log(1 + r) + 1.0/(1 + r) - 1 - eta
+
+
+def satellite_xyz(r_virial, r_s):
+    """
+    :param r_virial: Virial radius of a host halo
+    :param r_s: Concentration radius of a host halo
+    :return: Randomly generated dx, dy, dz (with respect to the host halo) of a satellite following NFW.
+    """
+    dxyz_sat = np.random.randn(3)
+    norm = np.sqrt(dxyz_sat**2)
+    dxyz_sat /= norm
+    # I need to generate distribuiton of distances according to NFW profile
+    # I will generate uniform numbers - eta - and then transform to - r - in
+    # such a way that r follows NFW.
+    # I don't want r to be larger than virial radius which implies that eta can
+    # not be larger than a certain number.
+    eta_max = np.log(1 + r_virial) + 1.0/(1 + r_virial) - 1
+    eta = np.random.uniform(0, eta_max)
+    rstar = scipy.optimize.fsolve(nfw_cdf, np.ndarray([1]), args=eta)
+    distance = r_s*rstar
+    dxyz_sat *= distance
+
+    return dxyz_sat
+
+
+def place_satellites(halos, n_sat_prob, satellites):
     """
     :param halos: array with 6 columns - halo mass, concentration radius, virial radius, x, y, z
     :param n_sat_prob: array of average number of satellites per halo
-    :param seed: random seed to make sure I can rerun with the same phase. This is optional if equal to
-    'None' a random seed will be used.
+    :param satellites:
     :return: x, y, z of satellite galaxies
     """
-
-    if seed != 'None':
-        np.random.seed(seed)
 
     # This is actual number of satellites not mean.
     n_sat = np.random.poisson(n_sat_prob)
     tot_n_sat = np.sum(n_sat)
-    x_sat, y_sat, z_sat = np.zeros(3, tot_n_sat)
+    # I will hold satellite x, y, z in here
+    xyz_sat = np.zeros(3, tot_n_sat)
 
     # Rs is in the second column and it is in kpc so convert to Mpc. Same for Rv.
     M, Rv, Rs, xh, yh, zh = halos.T
@@ -78,66 +105,35 @@ def place_satellites(halos, n_sat_prob, seed='None'):
     # Total number of halos
     nhalo = np.size(Rs)
 
-    # Coordinates of possible satellites with respect to the center.
-    # I will create twice the number of average satellites just in case.
-    # I need to do this to ensure in phase change in cosmology.
-    num_sat = int(n_sat_prob)*2
-    # Random direction
-    dx_sat = np.random.randn(num_sat)
-    dy_sat = np.random.randn(num_sat)
-    dz_sat = np.random.randn(num_sat)
-    # Make it unit length
-    norm = np.sqrt(dx_sat**2 + dy_sat**2 + dz_sat**2)
-    dx_sat /= norm
-    dy_sat /= norm
-    dz_sat /= norm
-    distance = np.zeros(num_sat)
-    # I need to generate distribuiton of distances according to NFW profile
-    # I will generate uniform numbers - eta - and then transform to - r - in
-    # such a way that r follows NFW.
-    # I don't want r to be larger than virial radius which implies that eta can
-    # not be larger than a certain number.
-    # I will figure out what that number should be here.
-    eta_max = np.log(1 + Rv) + 1.0/(1 + Rv) - 1
-    # Concentration parameter is usually not much larger than 10
-    eta = np.random.uniform(0, eta_max)
-    for i in range(num_sat):
-        def func(r):
-            np.log(1 + r) + 1.0/(1 + r) - 1 - eta[i]
+    # Add satellites as necessary
+    for i in range(nhalo):
+        need_more = n_sat[i] - len(satellites[i])
+        if need_more > 0:
+            for j in range(need_more):
+                xyz = satellite_xyz(Rv, Rs)
+                xyz += [xh, yh, zh]
+                satellites[i].append(xyz)
 
-        rstar = scipy.optimize.fsolve(func, np.ndarray([1]))
-        distance[i] = Rs[i]*rstar
-    dx_sat = np.transpose(dx_sat*distance)
-    dy_sat = np.transpose(dy_sat*distance)
-    dz_sat = np.transpose(dz_sat*distance)
-    # I need to be careful with this loop to ensure matched phase
     counter = 0
     for i in range(nhalo):
-        # This is not entirely correct. If I get more than twice the number of satellites than the mean I
-        # will just ignore them. This has a very low likelihood of happening however so I do not think it
-        # will affect the results much.
-        for j in range(np.max(n_sat[i], int(2*n_sat_prob[i]))):
-            x_sat[counter] = xh[i] + dx_sat[counter]
-            y_sat[counter] = yh[i] + dy_sat[counter]
-            z_sat[counter] = zh[i] + dz_sat[counter]
+        # The first element in satellites is always 'None'
+        for j in range(len(satellites[i])-1):
+            xyz_sat[counter] = satellites[i][j+1]
             counter += 1
-        # Make sure we move to the next satellite. This is necessary to maintain matched phase.
-        counter += 2*n_sat_prob[i] - n_sat[i]
-
-    return x_sat, y_sat, z_sat
+    return xyz_sat
 
 
-def populate_hod(halos, hod_par, seed):
+def populate_hod(halos, hod_par, satellites):
     """
     :param halos: array of halo properties - six columns - mass, concentration radius, virial radius, x, y, z,
     :param hod_par: HOD parameters in the order - (log10(Mcut), log10(M1), sigma, kappa, alpha)
-    :param seed: random seed in case I want matched phases. If equal to 'None' random seed is used.
+    :param satellites:
     :return: x, y, z of both centrals and satellites.
     """
     mass_halos = halos[:, 0]
     n_cen_prob, n_sat_prob = populate(mass_halos, hod_par)
-    xcen, ycen, zcen = place_centrals(halos, n_cen_prob, seed)
-    xsat, ysat, zsat = place_satellites(halos, n_sat_prob, seed)
+    xcen, ycen, zcen = place_centrals(halos, n_cen_prob)
+    xsat, ysat, zsat = place_satellites(halos, n_sat_prob, satellites)
     xyzall = np.hstack(([xcen, ycen, zcen], [xsat, ysat, zsat]))
     return xyzall
 
