@@ -40,7 +40,12 @@ def place_centrals(halos, n_cen_prob):
     :return: Array of x, y, z of central galaxies (only one central per halo)
     """
 
-    Ncen = np.random.poisson(n_cen_prob)
+    Nhalo = np.size(n_cen_prob)
+    Ncen = np.zeros(Nhalo)
+    # I have to reset the seed to make sure I have monotonic dependence on parameters
+    for i in range(Nhalo):
+        np.random.seed(i)
+        Ncen[i] = np.random.poisson(n_cen_prob[i])
     # Can only have one central galaxy.
 
     return np.transpose(halos[Ncen != 0, -3:])
@@ -91,16 +96,20 @@ def place_satellites(halos, n_sat_prob, satellites):
     :return: x, y, z of satellite galaxies
     """
 
+    # Total number of halos
+    nhalo = np.size(n_sat_prob)
     # This is actual number of satellites not mean.
-    n_sat = np.random.poisson(n_sat_prob)
+    n_sat = np.zeros(nhalo, dtype=int)
+    # I have to initialize the seed every time to make sure I have monotonic dependence on parameters
+    for i in range(nhalo):
+        np.random.seed(400 + i)
+        n_sat[i] = np.random.poisson(n_sat_prob[i])
     tot_n_sat = np.sum(n_sat)
     # I will hold satellite x, y, z in here
     xyz_sat = np.zeros((3, tot_n_sat))
     # Rs is in the second column and it is in kpc so convert to Mpc. Same for Rv.
     # Carefull here, these are not copies. chancing Rv will change halos.
     M, Rv, Rs, xh, yh, zh = halos.T
-    # Total number of halos
-    nhalo = np.size(Rs)
 
     # Number of satellites needed in this specific halo. Some of them may have been pregenerated (in-phase)
     sat_num = np.array([len(sat) if sat is not None else 0 for sat in satellites])
