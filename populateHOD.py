@@ -27,8 +27,9 @@ def populate(halo_mass, hod_par):
     n_cen_prob = 0.5 * scipy.special.erfc((Mcut - np.log10(halo_mass)) / np.sqrt(2) / sigma)
 
     # Satellite galaxies
-    n_sat_prob = n_cen_prob * ((halo_mass - kappa * 10 ** Mcut) / 10 ** M1) ** alpha
-    n_sat_prob[np.where(np.isnan(n_sat_prob))] = 0
+    n_sat_prob = n_cen_prob * ((halo_mass - kappa * 10 ** Mcut) / 10 ** M1)
+    n_sat_prob[np.where(n_sat_prob < 0)] = 0
+    n_sat_prob = n_sat_prob**alpha
 
     return n_cen_prob, n_sat_prob
 
@@ -45,7 +46,7 @@ def place_centrals(halos, n_cen_prob):
     # I have to reset the seed to make sure I have monotonic dependence on parameters
     for i in range(Nhalo):
         np.random.seed(i)
-        Ncen[i] = np.random.poisson(n_cen_prob[i])
+        Ncen[i] = np.random.binomial(1, n_cen_prob[i])
     # Can only have one central galaxy.
 
     return np.transpose(halos[Ncen != 0, -3:])
@@ -150,12 +151,15 @@ def populate_hod(halos, hod_par, satellites):
     return xyzall
 
 
-"""
+
 if __name__ == '__main__':
-    halos = np.load('/Users/Lado/Downloads/halos_small.npy')
+    print('loading halos')
+    halos = np.load('/mnt/data1/MDhalos.npy')
     HODpar = (13.08, 14.06, 0.98, 1.13, 0.9)
+    print('generating probabilities')
     Ncen, Nsat = populate(halos[:, 0], HODpar)
-    xc, yc, zc = place_centrals(halos, Ncen)
+    print('generating satellites')
     satellites = [[] for i in range(np.size(Ncen))]
+    print('placing satellites')
     xyzall = populate_hod(halos, HODpar, satellites)
-"""
+    print(xyzall)
