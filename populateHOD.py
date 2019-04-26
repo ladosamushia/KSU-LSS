@@ -13,6 +13,23 @@ import numpy as np
 # import time
 
 
+def my_poisson(l):
+    """
+    :param l: Mean of Poisson distribution
+    :return: Integer number sampled from Poisson with mean l
+    This implementation makes sure that the return number is a monotonic function of l (for the same seed)
+    """
+    x = 0.0
+    p = np.exp(-l)
+    s = np.exp(-l)
+    u = np.random.rand()
+    while u > s:
+        x += 1.0
+        p *= l/x
+        s += p
+    return x
+
+
 def populate(halo_mass, hod_par):
     """
     :param halo_mass: Numpy array of halo masses
@@ -43,13 +60,10 @@ def place_centrals(halos, n_cen_prob):
 
     Nhalo = np.size(n_cen_prob)
     Ncen = np.zeros(Nhalo)
-    # I have to reset the seed to make sure I have monotonic dependence on parameters
-    for i in range(Nhalo):
-        np.random.seed(i)
-        Ncen[i] = np.random.binomial(1, n_cen_prob[i])
-    # Can only have one central galaxy.
+    cen_prob = np.random.rand(Nhalo)
+    Ncen[cen_prob < n_cen_prob] = 1
 
-    return np.transpose(halos[Ncen != 0, -3:])
+    return np.transpose(halos[Ncen == 1, -3:])
 
 
 def nfw_cdf(r, eta):
@@ -89,69 +103,59 @@ def satellite_xyz(r_virial, r_s):
     return dxyz_sat
 
 
-def place_satellites(halos, n_sat_prob, satellites):
+def place_satellites(halos, n_sat_prob, satellites, num_satellites):
     """
     :param halos: array with 6 columns - halo mass, concentration radius, virial radius, x, y, z
     :param n_sat_prob: array of average number of satellites per halo
-    :param satellites: satellites that have been previously placed (for in-phase)
+    :param satellites: x, y, z of satellites that have been previously placed (for in-phase), 3xn array
+    :param num_satellites: array of lenth=number of halos, number of satellites in each halo (needed for in-phase)
     :return: x, y, z of satellite galaxies
     """
 
     # Total number of halos
     nhalo = np.size(n_sat_prob)
-    # This is actual number of satellites not mean.
-    n_sat = np.zeros(nhalo, dtype=int)
-    # I have to initialize the seed every time to make sure I have monotonic dependence on parameters
+    # Actual number of satellites
+    n_sat = np.zeros(nhalo)
     for i in range(nhalo):
-        np.random.seed(400 + i)
-        n_sat[i] = np.random.poisson(n_sat_prob[i])
+        n_sat[i] = my_poisson(n_sat_prob[i])
     tot_n_sat = np.sum(n_sat)
     # I will hold satellite x, y, z in here
     xyz_sat = np.zeros((3, tot_n_sat))
+
     # Rs is in the second column and it is in kpc so convert to Mpc. Same for Rv.
     # Carefull here, these are not copies. chancing Rv will change halos.
     M, Rv, Rs, xh, yh, zh = halos.T
 
-    # Number of satellites needed in this specific halo. Some of them may have been pregenerated (in-phase)
-    sat_num = np.array([len(sat) if sat is not None else 0 for sat in satellites])
-    # How many more I need to create
-    need_more = n_sat - sat_num
-    # Add satellites as necessary
-    for i in range(nhalo):
-        if need_more[i] > 0:
-            for j in range(need_more[i]):
-                xyz = satellite_xyz(Rv[i]/1000, Rs[i]/1000)
-                xyz += [xh[i], yh[i], zh[i]]
-                if sat_num[i] == 0:
-                    satellites[i] = [xyz]
-                else:
-                    satellites[i].append(xyz)
-                sat_num[i] += 1
-
+    # How many more satellites do I need
+    num_more_sat = n_sat - num_satellites
     counter = 0
     for i in range(nhalo):
-        for j in range(n_sat[i]):
-            xyz_sat[:, counter] = satellites[i][j]
-            counter += 1
+        if num_more_sat > 0:
+            xyz_sat[:, counter:counter+n_sat[i]] = xh[i], yh[i], zh[i]
+            xyz_sat[:, counter:counter+n_sat[i]] += satellite_xyz(Rv/1000.0, Rs/1000.0)
+        else:
+            xyz_sat[:, counter:counter+n_sat[i]] = satellites[:, counter:counter+num_satellites]
+
     return xyz_sat
 
 
-def populate_hod(halos, hod_par, satellites):
+def populate_hod(halos, hod_par, satellites, num_satellites):
     """
     :param halos: array of halo properties - six columns - mass, concentration radius, virial radius, x, y, z,
     :param hod_par: HOD parameters in the order - (log10(Mcut), log10(M1), sigma, kappa, alpha)
     :param satellites: satellites that already have been generated (in-phase). List of lists of np.array([x,y,z]).
+    :param num_satellites: pregenerated x, y, z of satellites. Will be empty when first run.
     :return: x, y, z of both centrals and satellites.
     """
     mass_halos = halos[:, 0]
     n_cen_prob, n_sat_prob = populate(mass_halos, hod_par)
     xcen, ycen, zcen = place_centrals(halos, n_cen_prob)
-    xsat, ysat, zsat = place_satellites(halos, n_sat_prob, satellites)
+    xsat, ysat, zsat = place_satellites(halos, n_sat_prob, satellites, num_satellites)
     xyzall = np.hstack(([xcen, ycen, zcen], [xsat, ysat, zsat]))
     return xyzall
 
 
-
+"""
 if __name__ == '__main__':
     print('loading halos')
     halos = np.load('/mnt/data1/MDhalos.npy')
@@ -163,3 +167,4 @@ if __name__ == '__main__':
     print('placing satellites')
     xyzall = populate_hod(halos, HODpar, satellites)
     print(xyzall)
+"""
