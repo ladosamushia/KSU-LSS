@@ -47,7 +47,7 @@ def place_satellites(halos, n_sat):
     returns x, y, z coordinates of satellite galaxies assuming NFW profile.
     """
     # Rs is in the second column and it is in kpc so convert to Mpc
-    M, Rs, xh, yh, zh = halos.T
+    M, Rs, Rv, xh, yh, zh = halos.T
     Rs /= 1000.0
     # Total number of satellites
     tot_sat = int(np.sum(n_sat))
@@ -98,20 +98,21 @@ def populate_hod(halos, hod_par):
     """
     Mhalos = halos[:, 0]
     Ncen, Nsat = populate(Mhalos, hod_par)
-    xcen, ycen, zcen = np.transpose(halos[Ncen, 2:])
+    print(np.shape(halos[Ncen,2:]))
+    xcen, ycen, zcen = np.transpose(halos[Ncen, 3:])
     xsat, ysat, zsat = place_satellites(halos, Nsat)
     xyzall = np.hstack(([xcen, ycen, zcen], [xsat, ysat, zsat]))
     return xyzall
 
 
-"""
+
 if __name__ == '__main__':
-    start_time = time.time()
+#    start_time = time.time()
     halos = np.load('/mnt/data1/MDhalos.npy')
-    print(time.time() - start_time)
+#    print(time.time() - start_time)
     print(halos)
     HODpar = (13.08, 14.06, 0.98, 1.13, 0.9)
     xyzall = populate_hod(halos, HODpar)
     print(xyzall)
-    print(time.time() - start_time)
-"""
+#    print(time.time() - start_time)
+
